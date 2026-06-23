@@ -6,9 +6,6 @@ import (
 	"github.com/stretchr/testify/require" //nolint:depguard
 )
 
-// Change to true if needed.
-var taskWithAsteriskIsCompleted = true
-
 var text = `Как видите, он  спускается  по  лестнице  вслед  за  своим
 	другом   Кристофером   Робином,   головой   вниз,  пересчитывая
 	ступеньки собственным затылком:  бум-бум-бум.  Другого  способа
@@ -48,35 +45,42 @@ func TestTop10(t *testing.T) {
 		require.Len(t, Top10(""), 0)
 	})
 
-	t.Run("positive test", func(t *testing.T) {
-		if taskWithAsteriskIsCompleted {
-			expected := []string{
-				"а",         // 8
-				"он",        // 8
-				"и",         // 6
-				"ты",        // 5
-				"что",       // 5
-				"в",         // 4
-				"его",       // 4
-				"если",      // 4
-				"кристофер", // 4
-				"не",        // 4
-			}
-			require.Equal(t, expected, Top10(text))
-		} else {
-			expected := []string{
-				"он",        // 8
-				"а",         // 6
-				"и",         // 6
-				"ты",        // 5
-				"что",       // 5
-				"-",         // 4
-				"Кристофер", // 4
-				"если",      // 4
-				"не",        // 4
-				"то",        // 4
-			}
-			require.Equal(t, expected, Top10(text))
+	t.Run("positive test with additional task rules", func(t *testing.T) {
+		expected := []string{
+			"а",         // 8
+			"он",        // 8
+			"и",         // 6
+			"ты",        // 5
+			"что",       // 5
+			"в",         // 4
+			"его",       // 4
+			"если",      // 4
+			"кристофер", // 4
+			"не",        // 4
 		}
+		require.Equal(t, expected, Top10(text))
+	})
+
+	t.Run("normalizes case and trims punctuation only at word edges", func(t *testing.T) {
+		input := "Нога нога! нога, 'нога' какой-то какойто dog,cat dog...cat dogcat"
+		expected := []string{
+			"нога",      // 4
+			"dog,cat",   // 1
+			"dog...cat", // 1
+			"dogcat",    // 1
+			"какой-то",  // 1
+			"какойто",   // 1
+		}
+		require.Equal(t, expected, Top10(input))
+	})
+
+	t.Run("single hyphen is not a word but multiple hyphens are preserved", func(t *testing.T) {
+		input := "- ------- ------- слово словa"
+		expected := []string{
+			"-------", // 2
+			"словa",   // 1
+			"слово",   // 1
+		}
+		require.Equal(t, expected, Top10(input))
 	})
 }
