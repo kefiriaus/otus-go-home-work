@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 const EscapeRune = '\\'
@@ -26,11 +27,15 @@ func (p Rune) IsEmpty() bool {
 }
 
 func (p Rune) IsLetter() bool {
-	return p.escaped || unicode.IsLetter(p.r) || unicode.IsSpace(p.r)
+	return p.escaped || unicode.IsLetter(p.r) || unicode.IsSpace(p.r) || unicode.IsSymbol(p.r)
 }
 
 func (p Rune) IsDigit() bool {
 	return !p.escaped && unicode.IsDigit(p.r)
+}
+
+func (p Rune) IsPunct() bool {
+	return !p.escaped && p.r != EscapeRune && unicode.IsPunct(p.r)
 }
 
 func (p Rune) IsEscape() bool {
@@ -52,6 +57,9 @@ func UnpackRune(prev, current Rune, isCurrentLast bool) (res []rune, escaped boo
 		return nil, false, ErrInvalidString
 	}
 	if prev.IsEscape() && current.IsLetter() {
+		return nil, false, ErrInvalidString
+	}
+	if prev.IsEscape() && current.IsPunct() {
 		return nil, false, ErrInvalidString
 	}
 
@@ -82,7 +90,7 @@ func UnpackRune(prev, current Rune, isCurrentLast bool) (res []rune, escaped boo
 }
 
 func Unpack(s string) (string, error) {
-	sLen := len(s)
+	sLen := utf8.RuneCountInString(s)
 	if sLen == 0 {
 		return "", nil
 	}
@@ -91,16 +99,18 @@ func Unpack(s string) (string, error) {
 	var isCurrentLast, escaped bool
 	var res []rune
 	var err error
+	var n int
 	ss := strings.Builder{}
-	for i, r := range s {
+	for _, r := range s {
 		current.Update(r, false)
-		isCurrentLast = i == sLen-1
+		isCurrentLast = n == sLen-1
 		res, escaped, err = UnpackRune(prev, current, isCurrentLast)
 		if err != nil {
 			return "", err
 		}
 		prev.Update(r, escaped)
 		ss.WriteString(string(res))
+		n++
 	}
 	return ss.String(), nil
 }
