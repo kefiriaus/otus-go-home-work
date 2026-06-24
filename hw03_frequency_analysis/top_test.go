@@ -83,4 +83,36 @@ func TestTop10(t *testing.T) {
 		}
 		require.Equal(t, expected, Top10(input))
 	})
+
+	t.Run("emoji is preserved as a word symbol", func(t *testing.T) {
+		input := "🙂🙂 🙂 🙂! hello🙂 hello🙂. 🙂hello🙂"
+		expected := []string{
+			"hello🙂",  // 2
+			"🙂",       // 2
+			"🙂hello🙂", // 1
+			"🙂🙂",      // 1
+		}
+		require.Equal(t, expected, Top10(input))
+	})
+
+	t.Run("single and repeated punctuation are words", func(t *testing.T) {
+		input := "! ... ! ... слово"
+		expected := []string{
+			"!",     // 2
+			"...",   // 2
+			"слово", // 1
+		}
+		require.Equal(t, expected, Top10(input))
+	})
+
+	t.Run("splits words on newline tab and other whitespace", func(t *testing.T) {
+		input := "alpha\n beta\talpha\r\ngamma\vbeta\ffinal"
+		expected := []string{
+			"alpha", // 2
+			"beta",  // 2
+			"final", // 1
+			"gamma", // 1
+		}
+		require.Equal(t, expected, Top10(input))
+	})
 }

@@ -15,12 +15,22 @@ func isOnlyHyphens(s string) bool {
 	return len(s) > 1 && strings.TrimRight(s, "-") == ""
 }
 
+func isOnlyPunct(s string) bool {
+	if s == "-" { return false }
+	return len(s) > 0 && strings.TrimFunc(s, func(r rune) bool {
+		return unicode.IsPunct(r)
+	}) == ""
+}
+
 func trimNonLetter(s string) string {
 	if isOnlyHyphens(s) {
 		return s
 	}
+	if isOnlyPunct(s) {
+		return s
+	}
 	return strings.TrimFunc(s, func(r rune) bool {
-		return !unicode.IsLetter(r)
+		return unicode.IsPunct(r) || unicode.IsSpace(r)
 	})
 }
 
