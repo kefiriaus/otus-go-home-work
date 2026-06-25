@@ -17,9 +17,7 @@ func isOnlyHyphens(s string) bool {
 
 func isOnlyPunct(s string) bool {
 	if s == "-" { return false }
-	return len(s) > 0 && strings.TrimFunc(s, func(r rune) bool {
-		return unicode.IsPunct(r)
-	}) == ""
+	return len(s) > 0 && strings.TrimFunc(s, unicode.IsPunct) == ""
 }
 
 func trimNonLetter(s string) string {
