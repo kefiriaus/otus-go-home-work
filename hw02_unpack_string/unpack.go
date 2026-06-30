@@ -69,7 +69,7 @@ func UnpackRune(prev, current Rune, isCurrentLast bool) (res []rune, escaped boo
 		return res, true, nil
 	case prev.IsLetter() && !prev.IsEscaped() && !current.IsDigit():
 		res = append(res, prev.r)
-	case prev.IsLetter() && current.IsDigit():
+	case (prev.IsLetter() || prev.IsPunct()) && current.IsDigit():
 		n, err := strconv.Atoi(string(current.r))
 		if err != nil {
 			return nil, false, err
