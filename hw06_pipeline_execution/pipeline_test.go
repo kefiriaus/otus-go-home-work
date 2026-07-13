@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/require" //nolint:depguard
 	"go.uber.org/goleak"
 )
 
@@ -15,7 +15,7 @@ const (
 	fault         = sleepPerStage / 2
 )
 
-func TestPipeline(t *testing.T) {
+func TestPipeline(t *testing.T) { //nolint:funlen
 	// Stage generator
 	g := func(_ string, f func(v interface{}) interface{}) Stage {
 		return func(in In) Out {
@@ -146,7 +146,6 @@ func TestAllStageStop(t *testing.T) {
 		wg.Wait()
 
 		require.Len(t, result, 0)
-
 	})
 }
 
@@ -196,7 +195,7 @@ func TestNoGoroutineLeakOnDone(t *testing.T) {
 	}
 }
 
-func TestPipelineEdgeCases(t *testing.T) {
+func TestPipelineEdgeCases(t *testing.T) { //nolint:funlen
 	t.Run("no stages", func(t *testing.T) {
 		in := make(Bi)
 		go func() {

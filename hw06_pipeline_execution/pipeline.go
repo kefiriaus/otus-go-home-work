@@ -40,8 +40,7 @@ func ExecuteStage(in In, done In, stage Stage) Out {
 			select {
 			case out <- v:
 			case <-done:
-				for range stageOut {
-				}
+				for range stageOut {}
 				return
 			}
 		}
