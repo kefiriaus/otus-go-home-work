@@ -40,6 +40,7 @@ func ExecuteStage(in In, done In, stage Stage) Out {
 			select {
 			case out <- v:
 			case <-done:
+				// Drain stageOut to prevent goroutine leak in upstream stage.
 				//nolint:revive
 				for range stageOut {
 				}
