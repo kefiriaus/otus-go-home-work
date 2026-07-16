@@ -8,14 +8,13 @@ type (
 
 type Stage func(in In) (out Out)
 
-func guard(in In, done In) Out {
+func headGuard(in In, done In) Out {
 	out := make(Bi)
 	go func() {
 		defer close(out)
 		for {
 			select {
 			case <-done:
-				drain(in)
 				return
 			case v, ok := <-in:
 				if !ok {
@@ -24,7 +23,6 @@ func guard(in In, done In) Out {
 				select {
 				case out <- v:
 				case <-done:
-					drain(in)
 					return
 				}
 			}
@@ -33,17 +31,41 @@ func guard(in In, done In) Out {
 	return out
 }
 
-func drain(in In) {
+func tailGuard(in In, done In) Out {
+	out := make(Bi)
 	go func() {
-		//nolint:revive
-		for range in {
+		for {
+			select {
+			case <-done:
+				close(out)
+				//nolint:revive
+				for range in {
+				}
+				return
+			case v, ok := <-in:
+				if !ok {
+					close(out)
+					return
+				}
+				select {
+				case out <- v:
+				case <-done:
+					close(out)
+					//nolint:revive
+					for range in {
+					}
+					return
+				}
+			}
 		}
 	}()
+	return out
 }
 
 func ExecutePipeline(in In, done In, stages ...Stage) Out {
+	in = headGuard(in, done)
 	for _, stage := range stages {
-		in = stage(guard(in, done))
+		in = stage(in)
 	}
-	return in
+	return tailGuard(in, done)
 }
