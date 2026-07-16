@@ -15,8 +15,7 @@ func guard(in In, done In) Out {
 		for {
 			select {
 			case <-done:
-				for range in { //nolint:revive
-				}
+				drain(in)
 				return
 			case v, ok := <-in:
 				if !ok {
@@ -25,14 +24,21 @@ func guard(in In, done In) Out {
 				select {
 				case out <- v:
 				case <-done:
-					for range in { //nolint:revive
-					}
+					drain(in)
 					return
 				}
 			}
 		}
 	}()
 	return out
+}
+
+func drain(in In) {
+	go func() {
+		//nolint:revive
+		for range in {
+		}
+	}()
 }
 
 func ExecutePipeline(in In, done In, stages ...Stage) Out {
