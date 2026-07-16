@@ -8,12 +8,16 @@ type (
 
 type Stage func(in In) (out Out)
 
-func WrapStage(in In, done In) Out {
+func guard(in In, done In) Out {
 	out := make(Bi)
 	go func() {
 		defer close(out)
 		for {
 			select {
+			case <-done:
+				for range in { //nolint:revive
+				}
+				return
 			case v, ok := <-in:
 				if !ok {
 					return
@@ -21,30 +25,10 @@ func WrapStage(in In, done In) Out {
 				select {
 				case out <- v:
 				case <-done:
+					for range in { //nolint:revive
+					}
 					return
 				}
-			case <-done:
-				return
-			}
-		}
-	}()
-	return out
-}
-
-func ExecuteStage(in In, done In, stage Stage) Out {
-	out := make(Bi)
-	stageOut := stage(WrapStage(in, done))
-	go func() {
-		defer close(out)
-		for v := range stageOut {
-			select {
-			case out <- v:
-			case <-done:
-				// Drain stageOut to prevent goroutine leak in upstream stage.
-				//nolint:revive
-				for range stageOut {
-				}
-				return
 			}
 		}
 	}()
@@ -52,12 +36,8 @@ func ExecuteStage(in In, done In, stage Stage) Out {
 }
 
 func ExecutePipeline(in In, done In, stages ...Stage) Out {
-	if len(stages) == 0 {
-		return in
-	}
-
 	for _, stage := range stages {
-		in = ExecuteStage(in, done, stage)
+		in = stage(guard(in, done))
 	}
 	return in
 }
