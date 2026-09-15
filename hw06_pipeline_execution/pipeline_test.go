@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/require" //nolint:depguard
+	"go.uber.org/goleak"
 )
 
 const (
@@ -14,7 +15,7 @@ const (
 	fault         = sleepPerStage / 2
 )
 
-func TestPipeline(t *testing.T) {
+func TestPipeline(t *testing.T) { //nolint:funlen
 	// Stage generator
 	g := func(_ string, f func(v interface{}) interface{}) Stage {
 		return func(in In) Out {
@@ -145,6 +146,127 @@ func TestAllStageStop(t *testing.T) {
 		wg.Wait()
 
 		require.Len(t, result, 0)
+	})
+}
 
+func TestNoGoroutineLeakOnDone(t *testing.T) {
+	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
+
+	g := func(f func(v interface{}) interface{}) Stage {
+		return func(in In) Out {
+			out := make(Bi)
+			go func() {
+				defer close(out)
+				for v := range in {
+					time.Sleep(sleepPerStage)
+					out <- f(v)
+				}
+			}()
+			return out
+		}
+	}
+	stages := []Stage{
+		g(func(v interface{}) interface{} { return v }),
+		g(func(v interface{}) interface{} { return v.(int) * 2 }),
+		g(func(v interface{}) interface{} { return v.(int) + 100 }),
+	}
+
+	in := make(Bi)
+	done := make(Bi)
+
+	go func() {
+		defer close(in)
+		for i := 0; i < 1000; i++ {
+			select {
+			case in <- i:
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	go func() {
+		<-time.After(sleepPerStage * 2)
+		close(done)
+	}()
+
+	//nolint:revive
+	for range ExecutePipeline(in, done, stages...) {
+	}
+}
+
+func TestPipelineEdgeCases(t *testing.T) { //nolint:funlen
+	t.Run("no stages", func(t *testing.T) {
+		in := make(Bi)
+		go func() {
+			defer close(in)
+			in <- 1
+			in <- 2
+		}()
+
+		result := make([]interface{}, 0, 2)
+		for v := range ExecutePipeline(in, nil) {
+			result = append(result, v)
+		}
+		require.Equal(t, []interface{}{1, 2}, result)
+	})
+
+	t.Run("empty input", func(t *testing.T) {
+		in := make(Bi)
+		close(in)
+
+		stage := func(in In) Out {
+			out := make(Bi)
+			go func() {
+				defer close(out)
+				for v := range in {
+					out <- v
+				}
+			}()
+			return out
+		}
+
+		result := make([]interface{}, 0)
+		for v := range ExecutePipeline(in, nil, stage, stage) {
+			result = append(result, v)
+		}
+		require.Empty(t, result)
+	})
+
+	t.Run("done closed before start", func(t *testing.T) {
+		in := make(Bi)
+		done := make(Bi)
+		close(done)
+
+		go func() {
+			defer close(in)
+			for i := 0; i < 5; i++ {
+				select {
+				case in <- i:
+				case <-done:
+					return
+				}
+			}
+		}()
+
+		stage := func(in In) Out {
+			out := make(Bi)
+			go func() {
+				defer close(out)
+				for v := range in {
+					time.Sleep(sleepPerStage)
+					out <- v
+				}
+			}()
+			return out
+		}
+
+		start := time.Now()
+		result := make([]interface{}, 0)
+		for v := range ExecutePipeline(in, done, stage, stage) {
+			result = append(result, v)
+		}
+		require.Empty(t, result)
+		require.Less(t, int64(time.Since(start)), int64(fault))
 	})
 }
