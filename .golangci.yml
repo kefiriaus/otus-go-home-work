@@ -49,14 +49,13 @@ linters:
       rules:
         Main:
           files:
-            - $all
-            - '!$test'
+            - '!**/*_test.go'
           allow:
             - $gostd
             - golang.org/x/example/hello/reverse
         Test:
           files:
-            - $test
+            - '**/*_test.go'
           allow:
             - $gostd
             - github.com/stretchr/testify
