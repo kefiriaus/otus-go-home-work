@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.uber.org/goleak"
+	"go.uber.org/goleak" //nolint:depguard
 )
 
 func TestRun(t *testing.T) {
@@ -66,5 +66,98 @@ func TestRun(t *testing.T) {
 
 		require.Equal(t, int32(tasksCount), runTasksCount, "not all tasks were completed")
 		require.LessOrEqual(t, int64(elapsedTime), int64(sumTime/2), "tasks were run sequentially?")
+	})
+}
+
+func TestRunConcurrencyWithoutSleep(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	const (
+		workersCount = 5
+		tasksCount   = 20
+	)
+
+	release := make(chan struct{})
+	var active, peak atomic.Int32
+
+	tasks := make([]Task, tasksCount)
+	for i := range tasks {
+		tasks[i] = func() error {
+			updatePeak(&peak, active.Add(1))
+			<-release
+			active.Add(-1)
+			return nil
+		}
+	}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- Run(tasks, workersCount, 1) }()
+
+	require.Eventually(t, func() bool {
+		return active.Load() == workersCount
+	}, time.Second, time.Millisecond)
+
+	close(release)
+	require.NoError(t, <-errCh)
+	require.LessOrEqual(t, peak.Load(), int32(workersCount), "more than n tasks ran at once")
+}
+
+func updatePeak(peak *atomic.Int32, cur int32) {
+	for {
+		p := peak.Load()
+		if cur <= p || peak.CompareAndSwap(p, cur) {
+			return
+		}
+	}
+}
+
+func TestRunEdgeCases(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	makeTasks := func(count int, isErr func(i int) bool, counter *atomic.Int32) []Task {
+		tasks := make([]Task, count)
+		for i := range tasks {
+			fail := isErr(i)
+			tasks[i] = func() error {
+				counter.Add(1)
+				if fail {
+					return errors.New("task error")
+				}
+				return nil
+			}
+		}
+		return tasks
+	}
+	never := func(int) bool { return false }
+	always := func(int) bool { return true }
+	even := func(i int) bool { return i%2 == 0 }
+
+	t.Run("empty tasks", func(t *testing.T) {
+		require.NoError(t, Run(nil, 5, 1))
+	})
+
+	t.Run("fewer tasks than workers", func(t *testing.T) {
+		var cnt atomic.Int32
+		require.NoError(t, Run(makeTasks(3, never, &cnt), 10, 1))
+		require.Equal(t, int32(3), cnt.Load())
+	})
+
+	t.Run("errors below limit", func(t *testing.T) {
+		var cnt atomic.Int32
+		require.NoError(t, Run(makeTasks(10, even, &cnt), 3, 6))
+		require.Equal(t, int32(10), cnt.Load())
+	})
+
+	t.Run("errors exactly at limit", func(t *testing.T) {
+		var cnt atomic.Int32
+		err := Run(makeTasks(10, even, &cnt), 3, 5)
+		require.ErrorIs(t, err, ErrErrorsLimitExceeded)
+	})
+
+	t.Run("single worker, m=1", func(t *testing.T) {
+		var cnt atomic.Int32
+		err := Run(makeTasks(10, always, &cnt), 1, 1)
+		require.ErrorIs(t, err, ErrErrorsLimitExceeded)
+		require.LessOrEqual(t, cnt.Load(), int32(2))
 	})
 }
