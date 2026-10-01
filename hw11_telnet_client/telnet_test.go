@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net"
 	"sync"
@@ -13,7 +14,8 @@ import (
 
 func TestTelnetClient(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
-		l, err := net.Listen("tcp", "127.0.0.1:")
+		var config net.ListenConfig
+		l, err := config.Listen(context.Background(), "tcp", "127.0.0.1:")
 		require.NoError(t, err)
 		defer func() { require.NoError(t, l.Close()) }()
 
@@ -62,4 +64,38 @@ func TestTelnetClient(t *testing.T) {
 
 		wg.Wait()
 	})
+}
+
+func TestConnectionFailure(t *testing.T) {
+	client := NewTelnetClient("127.0.0.1:invalid", time.Second, io.NopCloser(&bytes.Buffer{}), io.Discard)
+	require.NotNil(t, client)
+	require.Error(t, client.Connect())
+	require.NoError(t, client.Close())
+}
+
+func TestCloseUnblocksTransfers(t *testing.T) {
+	var config net.ListenConfig
+	l, err := config.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = l.Close() })
+	in, writer := io.Pipe()
+	t.Cleanup(func() { _ = writer.Close() })
+	client := NewTelnetClient(l.Addr().String(), time.Second, in, io.Discard)
+	require.NotNil(t, client)
+	require.NoError(t, client.Connect())
+	peer, err := l.Accept()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = peer.Close() })
+	results := make(chan error, 2)
+	go func() { results <- client.Send() }()
+	go func() { results <- client.Receive() }()
+	require.NoError(t, client.Close())
+	for range 2 {
+		select {
+		case <-results:
+		case <-time.After(time.Second):
+			t.Fatal("Close did not unblock a transfer")
+		}
+	}
+	require.NoError(t, client.Close())
 }
