@@ -40,7 +40,7 @@ build:
 	go build -v -o $(BIN) -ldflags "$(LDFLAGS)" ./cmd/calendar
 
 run: build
-	$(BIN) -config ./configs/config.toml
+	$(BIN) -config ./configs/config.yaml
 
 build-img:
 	docker build \
@@ -55,12 +55,21 @@ version: build
 	$(BIN) version
 
 test:
-	go test -race ./internal/... ./pkg/...
+	go test -count=1 -race ./...
 
 install-lint-deps:
-	(which golangci-lint > /dev/null) || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell go env GOPATH)/bin v1.57.2
+	(which golangci-lint > /dev/null) || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh | sh -s -- -b $(shell go env GOPATH)/bin v2.13.2
 
 lint: install-lint-deps
 	golangci-lint run ./...
 
-.PHONY: build run build-img run-img version test lint
+.PHONY: build run build-img run-img version test lint install-lint-deps run-postgres run-rabbit migrate test-sql
+
+# Apply the schema explicitly before starting with storage.type=sql.
+migrate:
+	@test -n "$(DATABASE_DSN)" || (echo "Set DATABASE_DSN to the target PostgreSQL database"; exit 1)
+	psql "$(DATABASE_DSN)" -v ON_ERROR_STOP=1 -f migrations/001_events.up.sql
+
+test-sql:
+	@test -n "$(CALENDAR_TEST_DSN)" || (echo "Set CALENDAR_TEST_DSN to a dedicated PostgreSQL test database"; exit 1)
+	go test -count=1 -race -v ./internal/storage/sql

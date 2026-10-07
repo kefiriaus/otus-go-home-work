@@ -53,12 +53,16 @@ linters:
           allow:
             - $gostd
             - golang.org/x/example/hello/reverse
+            - github.com/fixme_my_friend/hw12_13_14_15_calendar
+            - github.com/lib/pq
+            - gopkg.in/yaml.v3
         Test:
           files:
             - '**/*_test.go'
           allow:
             - $gostd
             - github.com/stretchr/testify
+            - github.com/fixme_my_friend/hw12_13_14_15_calendar
     funlen:
       lines: 150
       statements: 80
