@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/app"
 	"github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/logger"
+	internalgrpc "github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/server/grpc"
 	internalhttp "github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/server/http"
 	"github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/storage"
 	memorystorage "github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/storage/memory"
@@ -75,14 +77,28 @@ func run(ctx context.Context, path string) (result error) {
 		store = memorystorage.New()
 	}
 	calendar := app.New(store)
-	// The application is initialized, but business API routes belong to homework 13.
-	_ = calendar
 	address := net.JoinHostPort(config.HTTP.Host, strconv.Itoa(config.HTTP.Port))
-	server := internalhttp.NewServer(log, address)
-	log.Info("calendar starting", "address", address, "storage", config.Storage.Type)
-	if err := server.Start(ctx); err != nil {
+	httpServer := internalhttp.NewServer(log, address, calendar)
+	grpcAddress := net.JoinHostPort(config.GRPC.Host, strconv.Itoa(config.GRPC.Port))
+	grpcServer := internalgrpc.NewServer(log, grpcAddress, calendar)
+	log.Info("calendar starting", "http_address", address, "grpc_address", grpcAddress, "storage", config.Storage.Type)
+	if err := runServers(ctx, httpServer, grpcServer); err != nil {
 		return err
 	}
 	log.Info("calendar stopped")
 	return nil
+}
+
+type lifecycleServer interface{ Start(context.Context) error }
+
+func runServers(ctx context.Context, first, second lifecycleServer) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make(chan error, 2)
+	go func() { results <- first.Start(ctx) }()
+	go func() { results <- second.Start(ctx) }()
+	firstError := <-results
+	cancel()
+	secondError := <-results
+	return errors.Join(firstError, secondError)
 }

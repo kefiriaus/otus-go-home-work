@@ -1,7 +1,37 @@
 syntax = "proto3";
 
-package event;
+package calendar.v1;
+option go_package = "github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/pb;calendarpb";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/empty.proto";
 
 message Event {
-    // TODO
+  string id = 1;
+  string title = 2;
+  google.protobuf.Timestamp starts_at = 3;
+  google.protobuf.Duration duration = 4;
+  string description = 5;
+  string user_id = 6;
+  google.protobuf.Duration notify_before = 7;
+}
+message CreateEventRequest { Event event = 1; }
+message UpdateEventRequest { string id = 1; Event event = 2; }
+message DeleteEventRequest { string id = 1; }
+message EventResponse { Event event = 1; }
+// Week begins on date; month begins on the first day of date's month.
+message ListEventsRequest {
+  string date = 1; // YYYY-MM-DD
+  string timezone = 2; // IANA name, default UTC
+}
+message ListEventsResponse { repeated Event events = 1; }
+
+service EventService {
+  rpc CreateEvent(CreateEventRequest) returns (EventResponse);
+  rpc UpdateEvent(UpdateEventRequest) returns (EventResponse);
+  rpc DeleteEvent(DeleteEventRequest) returns (google.protobuf.Empty);
+  rpc ListEventsOnDay(ListEventsRequest) returns (ListEventsResponse);
+  rpc ListEventsOnWeek(ListEventsRequest) returns (ListEventsResponse);
+  rpc ListEventsOnMonth(ListEventsRequest) returns (ListEventsResponse);
 }

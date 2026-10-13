@@ -9,12 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/app"
 	"github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/logger"
+	memorystorage "github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/storage/memory"
 )
 
 func TestHelloAndRequestLogging(t *testing.T) {
 	var out bytes.Buffer
-	s := NewServer(logger.New("info", &out), "127.0.0.1:0")
+	s := NewServer(logger.New("info", &out), "127.0.0.1:0", app.New(memorystorage.New()))
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://localhost/hello?q=1", nil)
 	req.RemoteAddr = "192.0.2.1:1234"
 	req.Header.Set("User-Agent", "calendar-test")
@@ -70,7 +72,7 @@ func TestLoggedStatus(t *testing.T) {
 }
 
 func TestServerLifecycle(t *testing.T) {
-	s := NewServer(logger.New("error"), "127.0.0.1:0")
+	s := apiServer()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := s.Start(ctx); err != nil {
