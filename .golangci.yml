@@ -55,6 +55,7 @@ linters:
             - golang.org/x/example/hello/reverse
             - github.com/fixme_my_friend/hw12_13_14_15_calendar
             - github.com/lib/pq
+            - github.com/rabbitmq/amqp091-go
             - gopkg.in/yaml.v3
             - google.golang.org/grpc
             - google.golang.org/protobuf
