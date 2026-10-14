@@ -1,0 +1,7 @@
+logger:
+  level: info
+rabbitmq:
+  url: "amqp://rabbit:password@localhost:5672/"
+  queue: calendar.notifications
+  timeout: 5s
+  prefetch: 10

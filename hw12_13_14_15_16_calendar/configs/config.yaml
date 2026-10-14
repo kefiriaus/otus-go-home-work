@@ -11,7 +11,7 @@ grpc:
   port: 50051
 
 storage:
-  type: memory
+  type: sql
 
 database:
   dsn: "postgres://postgres:password@localhost:5435/backend?sslmode=disable"
