@@ -68,3 +68,28 @@ func TestYAMLDefaults(t *testing.T) {
 		t.Fatalf("defaults: %+v", c)
 	}
 }
+
+func TestGRPCConfig(t *testing.T) {
+	c, err := LoadConfig(configFileForTest(t, "grpc:\n  host: 127.0.0.1\n  port: 50052"))
+	if err != nil || c.GRPC.Host != "127.0.0.1" || c.GRPC.Port != 50052 {
+		t.Fatalf("grpc config: %+v, %v", c, err)
+	}
+	t.Setenv("CALENDAR_GRPC_PORT", "50053")
+	t.Setenv("CALENDAR_GRPC_HOST", "0.0.0.0")
+	c, err = LoadConfig(configFileForTest(t, "{}"))
+	if err != nil || c.GRPC.Port != 50053 || c.GRPC.Host != "0.0.0.0" {
+		t.Fatalf("grpc override: %+v, %v", c, err)
+	}
+}
+
+func TestGRPCConfigValidation(t *testing.T) {
+	for _, body := range []string{"grpc:\n  port: 0", "grpc:\n  port: 65536", "grpc:\n  host: ''"} {
+		if _, err := LoadConfig(configFileForTest(t, body)); err == nil {
+			t.Fatalf("accepted %s", body)
+		}
+	}
+	t.Setenv("CALENDAR_GRPC_PORT", "bad")
+	if _, err := LoadConfig(configFileForTest(t, "{}")); err == nil {
+		t.Fatal("invalid grpc port env accepted")
+	}
+}

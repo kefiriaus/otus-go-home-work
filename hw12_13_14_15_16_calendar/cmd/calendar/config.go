@@ -20,6 +20,7 @@ const (
 type Config struct {
 	Logger   LoggerConf   `yaml:"logger"`
 	HTTP     HTTPConf     `yaml:"http"`
+	GRPC     HTTPConf     `yaml:"grpc"`
 	Storage  StorageConf  `yaml:"storage"`
 	Database DatabaseConf `yaml:"database"`
 }
@@ -45,6 +46,7 @@ func NewConfig() Config {
 	return Config{
 		Logger:  LoggerConf{Level: "info"},
 		HTTP:    HTTPConf{Host: "0.0.0.0", Port: 8080},
+		GRPC:    HTTPConf{Host: "0.0.0.0", Port: 50051},
 		Storage: StorageConf{Type: storageMemory},
 	}
 }
@@ -80,6 +82,7 @@ func (c *Config) applyEnvironment() error {
 		"CALENDAR_LOG_LEVEL":    &c.Logger.Level,
 		"CALENDAR_LOG_FILE":     &c.Logger.File,
 		"CALENDAR_HTTP_HOST":    &c.HTTP.Host,
+		"CALENDAR_GRPC_HOST":    &c.GRPC.Host,
 		"CALENDAR_STORAGE_TYPE": &c.Storage.Type,
 		"CALENDAR_DATABASE_DSN": &c.Database.DSN,
 	} {
@@ -87,12 +90,14 @@ func (c *Config) applyEnvironment() error {
 			*target = value
 		}
 	}
-	if value, ok := os.LookupEnv("CALENDAR_HTTP_PORT"); ok {
-		port, err := strconv.Atoi(value)
-		if err != nil {
-			return fmt.Errorf("CALENDAR_HTTP_PORT must be an integer")
+	for key, target := range map[string]*int{"CALENDAR_HTTP_PORT": &c.HTTP.Port, "CALENDAR_GRPC_PORT": &c.GRPC.Port} {
+		if value, ok := os.LookupEnv(key); ok {
+			port, err := strconv.Atoi(value)
+			if err != nil {
+				return fmt.Errorf("%s must be an integer", key)
+			}
+			*target = port
 		}
-		c.HTTP.Port = port
 	}
 	return nil
 }
@@ -105,6 +110,9 @@ func (c Config) validate() error {
 	}
 	if strings.TrimSpace(c.HTTP.Host) == "" || c.HTTP.Port < 1 || c.HTTP.Port > 65535 {
 		return fmt.Errorf("http requires a host and port between 1 and 65535")
+	}
+	if strings.TrimSpace(c.GRPC.Host) == "" || c.GRPC.Port < 1 || c.GRPC.Port > 65535 {
+		return fmt.Errorf("grpc requires a host and port between 1 and 65535")
 	}
 	if c.Storage.Type != storageMemory && c.Storage.Type != storageSQL {
 		return fmt.Errorf("storage.type must be memory or sql")

@@ -56,12 +56,16 @@ linters:
             - github.com/fixme_my_friend/hw12_13_14_15_calendar
             - github.com/lib/pq
             - gopkg.in/yaml.v3
+            - google.golang.org/grpc
+            - google.golang.org/protobuf
         Test:
           files:
             - '**/*_test.go'
           allow:
             - $gostd
             - github.com/stretchr/testify
+            - google.golang.org/grpc
+            - google.golang.org/protobuf
             - github.com/fixme_my_friend/hw12_13_14_15_calendar
     funlen:
       lines: 150

@@ -6,19 +6,22 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/server"
 )
 
 type Server struct{ httpServer *http.Server }
 
 type Logger interface{ Info(string, ...any) }
 
-// NewServer deliberately exposes only a hello-world route in homework 12.
-func NewServer(log Logger, address string) *Server {
+// NewServer exposes the calendar HTTP API and the original hello endpoint.
+func NewServer(log Logger, address string, calendar server.Application) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /hello", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("Hello, calendar!\n"))
 	})
+	registerAPI(mux, calendar)
 	return &Server{httpServer: &http.Server{
 		Addr:              address,
 		Handler:           loggingMiddleware(log, mux),

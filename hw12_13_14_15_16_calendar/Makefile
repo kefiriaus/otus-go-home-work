@@ -73,3 +73,13 @@ migrate:
 test-sql:
 	@test -n "$(CALENDAR_TEST_DSN)" || (echo "Set CALENDAR_TEST_DSN to a dedicated PostgreSQL test database"; exit 1)
 	go test -count=1 -race -v ./internal/storage/sql
+
+# protoc is supplied separately; generated files are stored in internal/pb.
+install-generate-deps:
+	GOBIN="$(CURDIR)/bin" go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.5
+	GOBIN="$(CURDIR)/bin" go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+
+generate:
+	go generate ./api
+
+.PHONY: generate install-generate-deps
