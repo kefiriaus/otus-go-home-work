@@ -1,0 +1,29 @@
+name: calendar
+services:
+  postgres:
+    extends:
+      file: deployments/docker-compose.yaml
+      service: postgres
+    volumes:
+      - calendar-data:/var/lib/postgresql/data
+  rabbitmq:
+    extends:
+      file: deployments/docker-compose.yaml
+      service: rabbitmq
+  api:
+    extends:
+      file: deployments/docker-compose.yaml
+      service: api
+    ports:
+      - "127.0.0.1:8888:8080"
+      - "127.0.0.1:50051:50051"
+  scheduler:
+    extends:
+      file: deployments/docker-compose.yaml
+      service: scheduler
+  sender:
+    extends:
+      file: deployments/docker-compose.yaml
+      service: sender
+volumes:
+  calendar-data:

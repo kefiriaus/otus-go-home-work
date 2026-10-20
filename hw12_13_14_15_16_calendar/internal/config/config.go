@@ -167,7 +167,8 @@ func (c Config) validate(role Role) error {
 	if c.Storage.Type != StorageMemory && c.Storage.Type != StorageSQL {
 		return fmt.Errorf("storage.type must be memory or sql")
 	}
-	if ((role == API && c.Storage.Type == StorageSQL) || role == Scheduler) && strings.TrimSpace(c.Database.DSN) == "" {
+	requiresDatabase := (role == API && c.Storage.Type == StorageSQL) || role == Scheduler || role == Sender
+	if requiresDatabase && strings.TrimSpace(c.Database.DSN) == "" {
 		return fmt.Errorf("database.dsn is required for sql storage")
 	}
 	if role != API {

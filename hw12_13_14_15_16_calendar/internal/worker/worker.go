@@ -63,25 +63,31 @@ func Run(ctx context.Context, path string, role config.Role) (result error) {
 		}
 	}()
 	log.Info("worker starting", "role", role, "queue", cfg.RabbitMQ.Queue)
+	if role != config.Sender && role != config.Scheduler {
+		return fmt.Errorf("unknown worker role: %s", role)
+	}
+	store := sqlstorage.New(cfg.Database.DSN)
+	startup, cancel := context.WithTimeout(ctx, cfg.Scheduler.Timeout)
+	defer cancel()
+	if err := store.Connect(startup); err != nil {
+		return err
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			log.Error("close PostgreSQL", "error", err)
+		}
+	}()
+	if err := store.Migrate(startup); err != nil {
+		return err
+	}
+	cancel()
 	switch role {
 	case config.Sender:
-		return sender.New(broker, sender.NewLogDelivery(io.MultiWriter(outputs...))).Run(ctx)
+		delivery := sender.NewRecordedDelivery(
+			sender.NewLogDelivery(io.MultiWriter(outputs...)), store, cfg.RabbitMQ.Timeout,
+		)
+		return sender.New(broker, delivery).Run(ctx)
 	case config.Scheduler:
-		store := sqlstorage.New(cfg.Database.DSN)
-		startup, cancel := context.WithTimeout(ctx, cfg.Scheduler.Timeout)
-		defer cancel()
-		if err := store.Connect(startup); err != nil {
-			return err
-		}
-		defer func() {
-			if err := store.Close(); err != nil {
-				log.Error("close PostgreSQL", "error", err)
-			}
-		}()
-		if err := store.Migrate(startup); err != nil {
-			return err
-		}
-		cancel()
 		process := scheduler.New(store, broker, log, cfg.Scheduler.Interval, cfg.Scheduler.BatchSize, cfg.Scheduler.Timeout)
 		return process.Run(ctx)
 	case config.API:

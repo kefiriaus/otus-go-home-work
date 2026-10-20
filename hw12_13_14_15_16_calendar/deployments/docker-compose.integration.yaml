@@ -1,0 +1,35 @@
+services:
+  postgres:
+    extends:
+      file: docker-compose.yaml
+      service: postgres
+  rabbitmq:
+    extends:
+      file: docker-compose.yaml
+      service: rabbitmq
+  api:
+    extends:
+      file: docker-compose.yaml
+      service: api
+  scheduler:
+    extends:
+      file: docker-compose.yaml
+      service: scheduler
+  sender:
+    extends:
+      file: docker-compose.yaml
+      service: sender
+  tests:
+    build:
+      context: ..
+      dockerfile: build/Dockerfile.integration
+    environment:
+      CALENDAR_API_URL: ${CALENDAR_INTEGRATION_API_URL:-http://api:8080}
+      CALENDAR_TEST_DSN: postgres://calendar:calendar@postgres:5432/calendar?sslmode=disable
+    depends_on:
+      api:
+        condition: service_started
+      scheduler:
+        condition: service_started
+      sender:
+        condition: service_started

@@ -24,7 +24,7 @@ func TestWorkerConfig(t *testing.T) {
 	}
 	t.Setenv("CALENDAR_RABBITMQ_QUEUE", "test-queue")
 	t.Setenv("CALENDAR_SCHEDULER_INTERVAL", "3s")
-	cfg, err = LoadFor(workerConfig(t, "{}"), Sender)
+	cfg, err = LoadFor(workerConfig(t, "database:\n  dsn: postgres://localhost/calendar"), Sender)
 	if err != nil || cfg.RabbitMQ.Queue != "test-queue" || cfg.Scheduler.Interval != 3*time.Second {
 		t.Fatalf("override: %+v %v", cfg, err)
 	}
@@ -41,5 +41,11 @@ func TestWorkerConfigRejectsInvalid(t *testing.T) {
 	t.Setenv("CALENDAR_SCHEDULER_INTERVAL", "bad")
 	if _, err := LoadFor(workerConfig(t, "{}"), Sender); err == nil {
 		t.Fatal("invalid interval")
+	}
+}
+
+func TestSenderRequiresDatabase(t *testing.T) {
+	if _, err := LoadFor(workerConfig(t, "{}"), Sender); err == nil {
+		t.Fatal("sender accepted missing database DSN")
 	}
 }

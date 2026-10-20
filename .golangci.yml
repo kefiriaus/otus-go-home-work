@@ -64,6 +64,7 @@ linters:
             - '**/*_test.go'
           allow:
             - $gostd
+            - github.com/lib/pq
             - github.com/stretchr/testify
             - google.golang.org/grpc
             - google.golang.org/protobuf

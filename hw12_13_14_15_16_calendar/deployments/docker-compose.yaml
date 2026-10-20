@@ -1,1 +1,60 @@
-version: "3"
+x-app-env: &app-env
+  CALENDAR_DATABASE_DSN: postgres://calendar:calendar@postgres:5432/calendar?sslmode=disable
+  CALENDAR_RABBITMQ_URL: amqp://calendar:calendar@rabbitmq:5672/
+  CALENDAR_RABBITMQ_QUEUE: calendar.notifications
+  CALENDAR_LOG_FILE: ""
+
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_USER: calendar
+      POSTGRES_PASSWORD: calendar
+      POSTGRES_DB: calendar
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 2s
+      timeout: 3s
+      retries: 40
+  rabbitmq:
+    image: rabbitmq:4.1.4-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: calendar
+      RABBITMQ_DEFAULT_PASS: calendar
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+  api:
+    build:
+      context: ..
+      dockerfile: build/Dockerfile
+    environment:
+      <<: *app-env
+      CALENDAR_STORAGE_TYPE: sql
+    depends_on:
+      postgres:
+        condition: service_healthy
+  scheduler:
+    build:
+      context: ..
+      dockerfile: build/Dockerfile.scheduler
+    environment:
+      <<: *app-env
+      CALENDAR_SCHEDULER_INTERVAL: 1s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+  sender:
+    build:
+      context: ..
+      dockerfile: build/Dockerfile.sender
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy

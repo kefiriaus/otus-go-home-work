@@ -1,0 +1,15 @@
+FROM golang:1.23.12-alpine3.22 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG LDFLAGS
+RUN CGO_ENABLED=0 go build -ldflags "$LDFLAGS" -o /calendar ./cmd/calendar_scheduler
+
+FROM alpine:3.22.1
+RUN apk add --no-cache ca-certificates && adduser -D -u 10001 calendar
+COPY --from=build /calendar /usr/local/bin/calendar_scheduler
+COPY configs/scheduler_config.yaml /etc/calendar/config.yaml
+USER calendar
+ENTRYPOINT ["/usr/local/bin/calendar_scheduler"]
+CMD ["--config=/etc/calendar/config.yaml"]

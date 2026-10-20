@@ -74,6 +74,7 @@ migrate:
 	@test -n "$(DATABASE_DSN)" || (echo "Set DATABASE_DSN to the target PostgreSQL database"; exit 1)
 	psql "$(DATABASE_DSN)" -v ON_ERROR_STOP=1 -f migrations/001_events.up.sql
 	psql "$(DATABASE_DSN)" -v ON_ERROR_STOP=1 -f migrations/002_notifications.up.sql
+	psql "$(DATABASE_DSN)" -v ON_ERROR_STOP=1 -f migrations/003_deliveries.up.sql
 
 test-sql:
 	@test -n "$(CALENDAR_TEST_DSN)" || (echo "Set CALENDAR_TEST_DSN to a dedicated PostgreSQL test database"; exit 1)
@@ -96,3 +97,14 @@ run-sender: build
 	$(SENDER_BIN) --config=./configs/sender_config.yaml
 
 .PHONY: run-scheduler run-sender
+
+up:
+	docker compose up -d --build
+
+down:
+	docker compose down
+
+integration-tests:
+	sh scripts/integration-tests.sh
+
+.PHONY: up down integration-tests
