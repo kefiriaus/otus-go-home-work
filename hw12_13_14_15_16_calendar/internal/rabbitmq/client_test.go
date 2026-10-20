@@ -2,6 +2,8 @@ package rabbitmq
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -65,6 +67,21 @@ func TestDecodeRejectsMalformed(t *testing.T) {
 		if _, err := decode([]byte(body)); err == nil {
 			t.Fatalf("accepted %s", body)
 		}
+	}
+}
+
+func TestDecodePreservesTrailingSyntaxError(t *testing.T) {
+	_, err := decode([]byte(`{} garbage`))
+	var syntaxError *json.SyntaxError
+	if !errors.As(err, &syntaxError) {
+		t.Fatalf("expected wrapped JSON syntax error, got %v", err)
+	}
+}
+
+func TestDecodeRejectsSecondJSONValue(t *testing.T) {
+	_, err := decode([]byte(`{} {}`))
+	if err == nil || err.Error() != "one notification required" {
+		t.Fatalf("expected single-notification error, got %v", err)
 	}
 }
 

@@ -253,6 +253,9 @@ func decode(body []byte) (notification.Notification, error) {
 	}
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return notification.Notification{}, fmt.Errorf("decode notification trailing data: %w", err)
+		}
 		return notification.Notification{}, errors.New("one notification required")
 	}
 	return *n, n.Validate()

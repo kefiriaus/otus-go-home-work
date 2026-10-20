@@ -1,3 +1,5 @@
+# Start RabbitMQ before the sender (PostgreSQL is not required):
+# make run-rabbit
 logger:
   level: info
 rabbitmq:

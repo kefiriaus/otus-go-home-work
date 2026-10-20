@@ -1,3 +1,6 @@
+# Start PostgreSQL and RabbitMQ before the scheduler:
+# make run-postgres
+# make run-rabbit
 logger:
   level: info
 storage:
