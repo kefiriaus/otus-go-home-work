@@ -1,0 +1,18 @@
+# Start PostgreSQL and RabbitMQ before the scheduler:
+# make run-postgres
+# make run-rabbit
+logger:
+  level: info
+storage:
+  type: sql
+database:
+  dsn: "postgres://postgres:password@localhost:5435/backend?sslmode=disable"
+rabbitmq:
+  url: "amqp://rabbit:password@localhost:5672/"
+  queue: calendar.notifications
+  timeout: 5s
+  prefetch: 10
+scheduler:
+  interval: 1m
+  batchSize: 100
+  timeout: 10s

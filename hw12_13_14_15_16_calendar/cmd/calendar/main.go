@@ -63,8 +63,12 @@ func run(ctx context.Context, path string) (result error) {
 		sqlStore := sqlstorage.New(config.Database.DSN)
 		connect, cancel := context.WithTimeout(ctx, 5*time.Second)
 		err := sqlStore.Connect(connect)
+		if err == nil {
+			err = sqlStore.Migrate(connect)
+		}
 		cancel()
 		if err != nil {
+			_ = sqlStore.Close()
 			return err
 		}
 		defer func() {

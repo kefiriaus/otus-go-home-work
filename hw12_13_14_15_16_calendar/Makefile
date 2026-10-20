@@ -1,4 +1,6 @@
 BIN := "./bin/calendar"
+SCHEDULER_BIN := "./bin/calendar_scheduler"
+SENDER_BIN := "./bin/calendar_sender"
 DOCKER_IMG="calendar:develop"
 
 GIT_HASH := $(shell git log --format="%h" -n 1)
@@ -38,6 +40,8 @@ run-rabbit:
 
 build:
 	go build -v -o $(BIN) -ldflags "$(LDFLAGS)" ./cmd/calendar
+	go build -v -o $(SCHEDULER_BIN) ./cmd/calendar_scheduler
+	go build -v -o $(SENDER_BIN) ./cmd/calendar_sender
 
 run: build
 	$(BIN) -config ./configs/config.yaml
@@ -69,6 +73,7 @@ lint: install-lint-deps
 migrate:
 	@test -n "$(DATABASE_DSN)" || (echo "Set DATABASE_DSN to the target PostgreSQL database"; exit 1)
 	psql "$(DATABASE_DSN)" -v ON_ERROR_STOP=1 -f migrations/001_events.up.sql
+	psql "$(DATABASE_DSN)" -v ON_ERROR_STOP=1 -f migrations/002_notifications.up.sql
 
 test-sql:
 	@test -n "$(CALENDAR_TEST_DSN)" || (echo "Set CALENDAR_TEST_DSN to a dedicated PostgreSQL test database"; exit 1)
@@ -83,3 +88,11 @@ generate:
 	go generate ./api
 
 .PHONY: generate install-generate-deps
+
+run-scheduler: build
+	$(SCHEDULER_BIN) --config=./configs/scheduler_config.yaml
+
+run-sender: build
+	$(SENDER_BIN) --config=./configs/sender_config.yaml
+
+.PHONY: run-scheduler run-sender
