@@ -1,4 +1,5 @@
-# Start RabbitMQ before the sender (PostgreSQL is not required):
+# Start PostgreSQL and RabbitMQ before the sender:
+# make run-postgres
 # make run-rabbit
 logger:
   level: info
@@ -7,3 +8,6 @@ rabbitmq:
   queue: calendar.notifications
   timeout: 5s
   prefetch: 10
+
+database:
+  dsn: "postgres://postgres:password@localhost:5435/backend?sslmode=disable"

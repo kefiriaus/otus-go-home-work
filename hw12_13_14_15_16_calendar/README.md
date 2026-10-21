@@ -209,10 +209,10 @@ make run-rabbit
 
 Sample configs agree on the database and queue. API sample storage is now SQL;
 using memory storage for the API does not share events with the scheduler.
-No manual queue/exchange/schema creation is required: scheduler/API apply schema
+No manual queue/exchange/schema creation is required: scheduler/API/sender apply schema
 migrations and both workers declare the durable notification queue, its dead-letter
 exchange and `<queue>.rejected` queue on startup. Embedded migrations use a database
-advisory lock so API and scheduler can start concurrently. Existing data is preserved.
+advisory lock so API and both workers can start concurrently. Existing data is preserved.
 
 ### Scheduling and delivery
 
@@ -234,7 +234,7 @@ repeats. The marker prevents routine repeated scans/restarts from republishing.
 Cleanup removes events whose end is strictly earlier than `now.AddDate(-1,0,0)`;
 an event exactly on the cutoff remains. Cleanup runs on each scan.
 Sender writes each valid notification as JSON to stdout (and the optional file),
-independent of diagnostic log-level filtering, then ACKs. Output failure requeues
+independent of diagnostic log-level filtering, records a SQL delivery receipt, then ACKs. Output or receipt failure requeues
 the message and stops the sender. Invalid JSON/schema is
 NACKed without requeue and goes to the rejected queue. Handler failures requeue the
 message and stop the process. Broker/database failures exit visibly; use a process
@@ -247,7 +247,7 @@ Sample worker logging is stdout-only. The optional logger file works as for API.
 
 | YAML field | Environment override | Default |
 | --- | --- | --- |
-| `database.dsn` | `CALENDAR_DATABASE_DSN` | Required for SQL/scheduler |
+| `database.dsn` | `CALENDAR_DATABASE_DSN` | Required for SQL API and both workers |
 | `rabbitmq.url` | `CALENDAR_RABBITMQ_URL` | `amqp://localhost:5672/` (broker default credentials) |
 | `rabbitmq.queue` | `CALENDAR_RABBITMQ_QUEUE` | `calendar.notifications` |
 | `rabbitmq.prefetch` | `CALENDAR_RABBITMQ_PREFETCH` | 10 |
@@ -271,3 +271,71 @@ CALENDAR_TEST_RABBITMQ_URL='amqp://rabbit:password@localhost:5672/' make test
 The SQL tests verify due selection, concurrent dispatch, failure retry, marker reset
 and cleanup boundaries. RabbitMQ integration tests use unique queue names; dispose
 of the dedicated broker or remove `calendar.test.*` queues/exchanges afterwards.
+
+
+## Homework 15: Docker and end-to-end tests
+
+Requires Docker Engine/Desktop and Docker Compose v2.35 or newer. Run from this
+calendar directory:
+
+```sh
+make up
+curl http://localhost:8888/hello
+make down
+```
+
+`make up` builds three independent application images and starts PostgreSQL 17.6,
+RabbitMQ 4.1.4, Calendar API, Scheduler and Sender. PostgreSQL and RabbitMQ
+healthchecks gate application startup. All processes apply embedded migrations
+safely at startup; no manual migration step is required. HTTP is published on
+`127.0.0.1:8888`, gRPC on `127.0.0.1:50051`. `docker compose up --build` also works
+from this directory. Database/broker ports are internal to the Compose network.
+Credentials in Compose are local development examples.
+
+All application images run as an unprivileged user and write logs to stdout;
+`docker compose logs -f api scheduler sender` follows them. Configuration files are
+included in images; existing `CALENDAR_*` environment variables override their
+settings, including internal database/broker addresses and an empty log-file path.
+The shared service definitions are in `deployments/docker-compose.yaml`; root
+`compose.yaml` adds host ports and a persistent PostgreSQL volume. `make down`
+preserves that volume. To explicitly discard local calendar data, use
+`docker compose down --volumes`.
+
+### Delivery receipts
+
+Sender now requires PostgreSQL (`database.dsn` / `CALENDAR_DATABASE_DSN`), just like
+Scheduler. After logging a notification, it writes a row to
+`notification_deliveries(event_id, starts_at, delivered_at)` before ACK. The key
+`(event_id, starts_at)` makes receipt writes idempotent and permits a new receipt
+when an event moves to a new start time. Receipts store status, not notification
+bodies, and remain after event deletion. Receipt writes are bounded by `rabbitmq.timeout`. There is no automatic receipt retention
+policy. Delivery remains at-least-once: a failure after stdout but before receipt
+or ACK can repeat the log entry. A receipt proves the sender processed the message;
+the scheduler's publication marker alone does not prove delivery.
+
+### Isolated integration suite
+
+```sh
+make integration-tests
+```
+
+This builds and starts a separate Compose project with all five services and a Go
+test container, runs the `integration` package, then removes its containers,
+network and volumes. No host ports are bound, and the ordinary calendar environment
+and its data are untouched. Concurrent runs use different project names. Success
+returns 0; build, startup, test or cleanup failure returns 1 from the runner
+(`make` itself conventionally reports failed recipes with status 2). Failure logs
+are printed before cleanup. Interruptions also trigger cleanup.
+
+The suite tests creation, validation/duplicate/time-conflict/not-found errors,
+update/delete, exact day/week/month listing boundaries, and actual notification
+delivery through the sender's SQL receipt. It verifies future reminders are not
+delivered prematurely. Readiness and delivery waits have deadlines.
+
+The suite uses the `integration` build tag and is separate from `make test`.
+For a deliberate failure/cleanup check:
+
+```sh
+CALENDAR_INTEGRATION_API_URL=http://api:1 make integration-tests
+```
+
