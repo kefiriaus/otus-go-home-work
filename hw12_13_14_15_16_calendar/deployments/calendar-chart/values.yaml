@@ -1,0 +1,55 @@
+# Development defaults. Load these images with make k8s-images before installing.
+images:
+  api: {repository: calendar-api, tag: hw16, pullPolicy: IfNotPresent}
+  scheduler: {repository: calendar-scheduler, tag: hw16, pullPolicy: IfNotPresent}
+  sender: {repository: calendar-sender, tag: hw16, pullPolicy: IfNotPresent}
+  integration: {repository: calendar-integration, tag: hw16, pullPolicy: IfNotPresent}
+replicas: {api: 1, scheduler: 1, sender: 1}
+resources:
+  requests: {cpu: 25m, memory: 32Mi}
+  limits: {cpu: 500m, memory: 128Mi}
+service: {httpPort: 8080, grpcPort: 50051}
+ingress:
+  enabled: true
+  className: nginx
+  host: calendar.local
+  annotations: {}
+config:
+  logLevel: info
+  queue: calendar.notifications
+  schedulerInterval: 1s
+  schedulerBatchSize: 100
+  schedulerTimeout: 10s
+  rabbitmqTimeout: 5s
+  rabbitmqPrefetch: 10
+connections:
+  # Existing Secret must have database-dsn and rabbitmq-url keys.
+  existingSecret: ""
+  # Required for external infrastructure unless existingSecret is supplied.
+  databaseDSN: ""
+  rabbitmqURL: ""
+postgres:
+  enabled: true
+  image: postgres:17.6-alpine
+  user: calendar
+  password: calendar
+  database: calendar
+  storage: 1Gi
+  storageClass: ""
+  resources:
+    requests: {cpu: 100m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+rabbitmq:
+  enabled: true
+  image: rabbitmq:4.1.4-alpine
+  user: calendar
+  password: calendar
+  storage: 1Gi
+  storageClass: ""
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+tests:
+  enabled: false
+  # Optional controlled-failure override for make k8s-smoke.
+  apiURL: ""

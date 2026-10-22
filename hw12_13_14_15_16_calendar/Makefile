@@ -108,3 +108,15 @@ integration-tests:
 	sh scripts/integration-tests.sh
 
 .PHONY: up down integration-tests
+
+k8s-start k8s-stop k8s-status k8s-images k8s-deploy k8s-undeploy k8s-smoke k8s-ingress k8s-api:
+	sh scripts/kubernetes.sh $(patsubst k8s-%,%,$@)
+
+helm-check:
+	sh scripts/test-kubernetes.sh
+	sh scripts/check-chart.sh
+
+k8s-render:
+	$(or $(HELM),helm) template calendar deployments/calendar-chart --namespace calendar-hw16 > deployments/kubernetes/calendar.yaml
+
+.PHONY: k8s-start k8s-stop k8s-status k8s-images k8s-deploy k8s-undeploy k8s-smoke k8s-ingress k8s-api helm-check k8s-render

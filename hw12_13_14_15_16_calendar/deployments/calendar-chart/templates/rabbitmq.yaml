@@ -1,0 +1,83 @@
+{{- if .Values.rabbitmq.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-rabbitmq
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "calendar.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: rabbitmq
+  ports:
+    - {name: rabbitmq, port: 5672, targetPort: rabbitmq}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-rabbitmq
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "calendar.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ .Release.Name }}-rabbitmq
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: rabbitmq
+  template:
+    metadata:
+      labels:
+        {{- include "calendar.labels" . | nindent 8 }}
+        app.kubernetes.io/component: rabbitmq
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: rabbitmq
+          image: {{ .Values.rabbitmq.image | quote }}
+          ports:
+            - {name: rabbitmq, containerPort: 5672}
+          env:
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - {name: RABBITMQ_NODENAME, value: "rabbit@$(POD_NAME)"}
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom: {secretKeyRef: {name: {{ .Release.Name }}-infrastructure, key: rabbitmq-user}}
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom: {secretKeyRef: {name: {{ .Release.Name }}-infrastructure, key: rabbitmq-password}}
+          startupProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, ping]
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, ping]
+            periodSeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, ping]
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.rabbitmq.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/rabbitmq}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- if .Values.rabbitmq.storageClass }}
+        storageClassName: {{ .Values.rabbitmq.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.rabbitmq.storage | quote }}
+{{- end }}

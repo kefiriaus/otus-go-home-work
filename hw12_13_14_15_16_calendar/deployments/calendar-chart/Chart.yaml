@@ -1,0 +1,6 @@
+apiVersion: v2
+name: calendar
+version: 0.1.0
+appVersion: "hw16"
+description: Calendar API, scheduler and sender with local PostgreSQL and RabbitMQ
+type: application

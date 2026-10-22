@@ -1,0 +1,588 @@
+---
+# Source: calendar/templates/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: calendar-connections
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+type: Opaque
+stringData:
+  database-dsn: "postgres://calendar:calendar@calendar-postgres:5432/calendar?sslmode=disable"
+  rabbitmq-url: "amqp://calendar:calendar@calendar-rabbitmq:5672/"
+
+---
+# Source: calendar/templates/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: calendar-infrastructure
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+type: Opaque
+stringData:
+  postgres-user: "calendar"
+  postgres-password: "calendar"
+  postgres-database: "calendar"
+  rabbitmq-user: "calendar"
+  rabbitmq-password: "calendar"
+
+---
+# Source: calendar/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: calendar-config
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+data:
+  CALENDAR_LOG_FILE: ""
+  CALENDAR_LOG_LEVEL: "info"
+  CALENDAR_STORAGE_TYPE: sql
+  CALENDAR_HTTP_PORT: "8080"
+  CALENDAR_GRPC_PORT: "50051"
+  CALENDAR_RABBITMQ_QUEUE: "calendar.notifications"
+  CALENDAR_RABBITMQ_TIMEOUT: "5s"
+  CALENDAR_RABBITMQ_PREFETCH: "10"
+  CALENDAR_SCHEDULER_INTERVAL: "1s"
+  CALENDAR_SCHEDULER_BATCH_SIZE: "100"
+  CALENDAR_SCHEDULER_TIMEOUT: "10s"
+
+---
+# Source: calendar/templates/postgres.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: calendar-postgres
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/component: postgres
+  ports:
+    - {name: postgres, port: 5432, targetPort: postgres}
+
+---
+# Source: calendar/templates/rabbitmq.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: calendar-rabbitmq
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/component: rabbitmq
+  ports:
+    - {name: rabbitmq, port: 5672, targetPort: rabbitmq}
+
+---
+# Source: calendar/templates/services.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: calendar-api
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/component: api
+  ports:
+    - {name: http, port: 8080, targetPort: http}
+    - {name: grpc, port: 50051, targetPort: grpc}
+
+---
+# Source: calendar/templates/services.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: calendar-scheduler
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: scheduler
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/component: scheduler
+
+---
+# Source: calendar/templates/services.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: calendar-sender
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: sender
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/component: sender
+
+---
+# Source: calendar/templates/deployments.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: calendar-api
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: calendar
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: calendar
+        app.kubernetes.io/instance: calendar
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: api
+      annotations:
+        checksum/config: e554d2023d435f6c46765f43386365ce182bd9fa7dd768315d8942300d1e7577
+        checksum/secret: 66b1bc2127f7be8c20400d4360c5cdcd7410aac05b68c985d7de146cbe218a92
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: wait-postgres
+          image: "postgres:17.6-alpine"
+          command: [sh, -ec]
+          args:
+            - 'for i in $(seq 1 60); do pg_isready -d "$DATABASE_DSN" && exit 0; sleep 2; done; exit 1'
+          env:
+            - name: DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: calendar-connections
+                  key: database-dsn
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+      containers:
+        - name: api
+          image: "calendar-api:hw16"
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: calendar-config
+          env:
+            - name: CALENDAR_DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: calendar-connections
+                  key: database-dsn
+            - name: CALENDAR_RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: calendar-connections
+                  key: rabbitmq-url
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 25m
+              memory: 32Mi
+          ports:
+            - {name: http, containerPort: 8080}
+            - {name: grpc, containerPort: 50051}
+          startupProbe:
+            httpGet: {path: /hello, port: http}
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            httpGet: {path: /hello, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /hello, port: http}
+            periodSeconds: 10
+
+---
+# Source: calendar/templates/deployments.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: calendar-scheduler
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: calendar
+      app.kubernetes.io/component: scheduler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: calendar
+        app.kubernetes.io/instance: calendar
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: scheduler
+      annotations:
+        checksum/config: e554d2023d435f6c46765f43386365ce182bd9fa7dd768315d8942300d1e7577
+        checksum/secret: 66b1bc2127f7be8c20400d4360c5cdcd7410aac05b68c985d7de146cbe218a92
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: wait-postgres
+          image: "postgres:17.6-alpine"
+          command: [sh, -ec]
+          args:
+            - 'for i in $(seq 1 60); do pg_isready -d "$DATABASE_DSN" && exit 0; sleep 2; done; exit 1'
+          env:
+            - name: DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: calendar-connections
+                  key: database-dsn
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+      containers:
+        - name: scheduler
+          image: "calendar-scheduler:hw16"
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: calendar-config
+          env:
+            - name: CALENDAR_DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: calendar-connections
+                  key: database-dsn
+            - name: CALENDAR_RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: calendar-connections
+                  key: rabbitmq-url
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 25m
+              memory: 32Mi
+
+---
+# Source: calendar/templates/deployments.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: calendar-sender
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: sender
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: calendar
+      app.kubernetes.io/component: sender
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: calendar
+        app.kubernetes.io/instance: calendar
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: sender
+      annotations:
+        checksum/config: e554d2023d435f6c46765f43386365ce182bd9fa7dd768315d8942300d1e7577
+        checksum/secret: 66b1bc2127f7be8c20400d4360c5cdcd7410aac05b68c985d7de146cbe218a92
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: wait-postgres
+          image: "postgres:17.6-alpine"
+          command: [sh, -ec]
+          args:
+            - 'for i in $(seq 1 60); do pg_isready -d "$DATABASE_DSN" && exit 0; sleep 2; done; exit 1'
+          env:
+            - name: DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: calendar-connections
+                  key: database-dsn
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+      containers:
+        - name: sender
+          image: "calendar-sender:hw16"
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: calendar-config
+          env:
+            - name: CALENDAR_DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: calendar-connections
+                  key: database-dsn
+            - name: CALENDAR_RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: calendar-connections
+                  key: rabbitmq-url
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 25m
+              memory: 32Mi
+
+---
+# Source: calendar/templates/postgres.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: calendar-postgres
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+spec:
+  serviceName: calendar-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: calendar
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: calendar
+        app.kubernetes.io/instance: calendar
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: postgres
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: postgres
+          image: "postgres:17.6-alpine"
+          ports:
+            - {name: postgres, containerPort: 5432}
+          env:
+            - name: POSTGRES_USER
+              valueFrom: {secretKeyRef: {name: calendar-infrastructure, key: postgres-user}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: calendar-infrastructure, key: postgres-password}}
+            - name: POSTGRES_DB
+              valueFrom: {secretKeyRef: {name: calendar-infrastructure, key: postgres-database}}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          startupProbe:
+            exec:
+              command: [sh, -ec, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: [sh, -ec, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            periodSeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: [sh, -ec, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: "1Gi"
+
+---
+# Source: calendar/templates/rabbitmq.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: calendar-rabbitmq
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+spec:
+  serviceName: calendar-rabbitmq
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: calendar
+      app.kubernetes.io/component: rabbitmq
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: calendar
+        app.kubernetes.io/instance: calendar
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: rabbitmq
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: rabbitmq
+          image: "rabbitmq:4.1.4-alpine"
+          ports:
+            - {name: rabbitmq, containerPort: 5672}
+          env:
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - {name: RABBITMQ_NODENAME, value: "rabbit@$(POD_NAME)"}
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom: {secretKeyRef: {name: calendar-infrastructure, key: rabbitmq-user}}
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom: {secretKeyRef: {name: calendar-infrastructure, key: rabbitmq-password}}
+          startupProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, ping]
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, ping]
+            periodSeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: [rabbitmq-diagnostics, -q, ping]
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/rabbitmq}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: "1Gi"
+
+---
+# Source: calendar/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: calendar-api
+  namespace: calendar-hw16
+  labels:
+    app.kubernetes.io/name: calendar
+    app.kubernetes.io/instance: calendar
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ingressClassName: "nginx"
+  rules:
+    - host: "calendar.local"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: calendar-api
+                port: {name: http}

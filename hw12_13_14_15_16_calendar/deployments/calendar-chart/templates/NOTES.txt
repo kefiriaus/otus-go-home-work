@@ -1,0 +1,10 @@
+Calendar release {{ .Release.Name }} is installed in namespace {{ .Release.Namespace }}.
+
+API: kubectl --context calendar-hw16 -n {{ .Release.Namespace }} port-forward service/{{ .Release.Name }}-api 18888:{{ .Values.service.httpPort }} 15051:{{ .Values.service.grpcPort }}
+Use your dedicated kubeconfig when running this command.
+{{ if .Values.ingress.enabled }}
+Ingress host: {{ .Values.ingress.host }} (class {{ .Values.ingress.className }})
+For macOS Docker: make k8s-ingress, then curl -H 'Host: {{ .Values.ingress.host }}' http://127.0.0.1:18888/hello
+{{ end }}
+Worker Services are headless discovery records: workers do not accept HTTP traffic.
+Database/broker PVCs survive Helm uninstall. Do not change persisted credentials without a data migration.

@@ -339,3 +339,131 @@ For a deliberate failure/cleanup check:
 CALENDAR_INTEGRATION_API_URL=http://api:1 make integration-tests
 ```
 
+
+## Homework 16: Kubernetes and Helm
+
+The self-contained chart lives in `deployments/calendar-chart`. It deploys three
+application Deployments, a Service for each, an HTTP Ingress, PostgreSQL/RabbitMQ
+StatefulSets, Secrets, a ConfigMap and persistent volumes. Default application
+images are local `calendar-{api,scheduler,sender}:hw16` images; they do not require
+a public registry. Infrastructure uses the same official images as Compose.
+
+### Local cluster
+
+Install Docker, Minikube, Helm and kubectl from their official distributions.
+The tested tool versions and real deployment results are recorded in
+`docs/16_KUBERNETES_RESULTS.md`. The default Kubernetes server version is v1.35.0;
+use a kubectl client within the supported one-minor version skew.
+
+```sh
+make k8s-start       # dedicated calendar-hw16 Minikube Docker profile, 2 CPU / 4 GiB
+make k8s-images      # builds and loads the 3 application images + test image
+make helm-check     # Helm/schema/render contracts, generated YAML consistency
+make k8s-deploy      # helm upgrade --install, wait for healthy resources
+make k8s-status
+make k8s-smoke       # existing business integration suite, now in a Kubernetes Job
+```
+
+The scripts use `.local/hw16/kubeconfig` and `.local/hw16/minikube` rather than the
+user's default kubeconfig/context. Every cluster operation explicitly selects the
+local `calendar-hw16` context; an unrelated context is rejected before any request.
+The namespace is `calendar-hw16`, the release is `calendar`. Existing remote
+clusters are not used. `.local/` is ignored by Git. To use task-local executables
+or a different state directory, set `MINIKUBE`, `HELM`, `KUBECTL` and
+`CALENDAR_K8S_STATE`. `PROFILE` may be `calendar-hw16` or start with
+`calendar-hw16-`; `KUBE_CONTEXT` must equal that profile. `NAMESPACE` and `RELEASE`
+can be overridden. Install internet access is needed for initial cluster/images.
+
+### Access through Ingress
+
+```sh
+make k8s-ingress
+# In another terminal:
+curl -H 'Host: calendar.local' http://127.0.0.1:18888/hello
+```
+
+This forwards the actual ingress controller, so requests pass through the Ingress
+rule. It works with Docker-backed Minikube on macOS without modifying `/etc/hosts`
+or reserving privileged host ports. Stop the foreground port-forward with Ctrl-C.
+For direct API access instead, `make k8s-api` forwards HTTP 18888 and gRPC 15051.
+Worker Services are headless discovery Services: Scheduler/Sender have no inbound
+HTTP protocol or fabricated listening ports. Only the API is routed by Ingress.
+API probes use `/hello`, which checks process health, not live DB connectivity.
+
+### Helm configuration and standalone YAML
+
+`values.yaml` contains development defaults for images/pull policies, replicas,
+resources, API ports, Ingress host/class/annotations, scheduler timings, queue,
+connection settings and infrastructure persistence. Schema validation rejects
+invalid values; HTTP/gRPC ports must differ. Bundled database/broker credentials
+are deliberately local examples and restricted to URL-safe characters. Use an
+existing Secret for real credentials; never put them in a committed values file.
+
+For a custom Helm invocation, select the dedicated kubeconfig/context explicitly:
+
+```sh
+helm upgrade --install calendar deployments/calendar-chart \
+  --kubeconfig .local/hw16/kubeconfig --kube-context calendar-hw16 \
+  --namespace calendar-hw16 --create-namespace --wait --timeout 10m \
+  --set ingress.host=my-calendar.local
+```
+
+To use external infrastructure, set `postgres.enabled=false` and/or
+`rabbitmq.enabled=false`, and supply `connections.databaseDSN` /
+`connections.rabbitmqURL`, or `connections.existingSecret`. The existing Secret
+must be in the release namespace with keys `database-dsn` and `rabbitmq-url`.
+With bundled infrastructure enabled, credentials in that Secret must match the
+bundled service credentials. Config/managed Secret changes restart application
+Pods; when using an external Secret, restart the Deployments after changing its
+values. Do not rotate database/broker credentials on existing PVCs by just editing
+Helm values: the existing data retains its original credentials.
+
+Plain manifests are generated from the same chart to avoid two independent sets
+of configuration. `make k8s-render` regenerates
+`deployments/kubernetes/calendar.yaml`; `make helm-check` rejects drift.
+As an alternative to Helm installation, use a fresh namespace/cluster:
+
+```sh
+kubectl --kubeconfig .local/hw16/kubeconfig --context calendar-hw16 \
+  create namespace calendar-hw16
+kubectl --kubeconfig .local/hw16/kubeconfig --context calendar-hw16 \
+  apply -f deployments/kubernetes/calendar.yaml
+```
+
+Do not combine standalone apply and Helm ownership for the same resources. The
+committed YAML uses release `calendar` and namespace `calendar-hw16`; render with
+explicit Helm arguments for another name/namespace. Migrations run automatically
+on application startup under the existing advisory lock. PostgreSQL startup waits
+are bounded; transient RabbitMQ startup failures cause Kubernetes to restart the
+worker after its connection timeout.
+
+### Tests, evidence and persistence
+
+`make k8s-smoke` reads the installed Helm release values (including custom ports,
+images and Secret names) and explicitly creates a finite Job using the existing integration
+image, waits for success or failure, prints test logs and returns nonzero on
+failure. The Job covers CRUD/business errors, exact day/week/month boundaries and
+real sender receipts. It is not run automatically by Helm install. Use
+`SMOKE_API_URL=http://calendar-api:1 make k8s-smoke` for a controlled failure with
+default release names. The smoke helper requires a Helm-managed release; for standalone apply, render the
+optional test Job with the same values and apply it explicitly. The Job remains
+for inspection and is replaced on the next
+smoke run. It does not have access to the Kubernetes API token.
+
+`make k8s-undeploy` uninstalls the release; StatefulSet PVCs remain. `make k8s-stop`
+stops Minikube while retaining the cluster and data. To restart, run
+`make k8s-start` and inspect `make k8s-status`. Data persists through cluster stop
+and Helm uninstall/reinstall with the same release and namespace.
+
+Deleting the namespace/PVCs or the Minikube profile discards homework data. These
+are separate manual actions, not part of normal stop/uninstall. For explicit full
+profile removal, use the matching local state and profile:
+
+```sh
+MINIKUBE_HOME="$PWD/.local/hw16/minikube" \
+KUBECONFIG="$PWD/.local/hw16/kubeconfig" minikube -p calendar-hw16 delete
+```
+
+See `docs/16_KUBERNETES_RESULTS.md` for actual results and screenshots under
+`docs/images/hw16/`, ready to attach to the homework MR. The deployment scripts do
+not publish anything to GitHub.
