@@ -1,0 +1,23 @@
+{{- range $component := list "api" "scheduler" "sender" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $.Release.Name }}-{{ $component }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "calendar.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  {{- if ne $component "api" }}
+  clusterIP: None
+  {{- end }}
+  selector:
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/component: {{ $component }}
+  {{- if eq $component "api" }}
+  ports:
+    - {name: http, port: {{ $.Values.service.httpPort }}, targetPort: http}
+    - {name: grpc, port: {{ $.Values.service.grpcPort }}, targetPort: grpc}
+  {{- end }}
+{{- end }}

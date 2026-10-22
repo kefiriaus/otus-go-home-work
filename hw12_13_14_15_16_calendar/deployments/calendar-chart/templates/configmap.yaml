@@ -1,0 +1,22 @@
+{{- if eq .Values.service.httpPort .Values.service.grpcPort }}
+{{- fail "HTTP and gRPC ports must differ" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "calendar.labels" . | nindent 4 }}
+data:
+  CALENDAR_LOG_FILE: ""
+  CALENDAR_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  CALENDAR_STORAGE_TYPE: sql
+  CALENDAR_HTTP_PORT: {{ .Values.service.httpPort | quote }}
+  CALENDAR_GRPC_PORT: {{ .Values.service.grpcPort | quote }}
+  CALENDAR_RABBITMQ_QUEUE: {{ .Values.config.queue | quote }}
+  CALENDAR_RABBITMQ_TIMEOUT: {{ .Values.config.rabbitmqTimeout | quote }}
+  CALENDAR_RABBITMQ_PREFETCH: {{ .Values.config.rabbitmqPrefetch | quote }}
+  CALENDAR_SCHEDULER_INTERVAL: {{ .Values.config.schedulerInterval | quote }}
+  CALENDAR_SCHEDULER_BATCH_SIZE: {{ .Values.config.schedulerBatchSize | quote }}
+  CALENDAR_SCHEDULER_TIMEOUT: {{ .Values.config.schedulerTimeout | quote }}

@@ -1,0 +1,90 @@
+{{- range $component := list "api" "scheduler" "sender" }}
+{{- $image := index $.Values.images $component }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Release.Name }}-{{ $component }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "calendar.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  replicas: {{ index $.Values.replicas $component }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      app.kubernetes.io/component: {{ $component }}
+  template:
+    metadata:
+      labels:
+        {{- include "calendar.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") $ | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: wait-postgres
+          image: {{ $.Values.postgres.image | quote }}
+          command: [sh, -ec]
+          args:
+            - 'for i in $(seq 1 60); do pg_isready -d "$DATABASE_DSN" && exit 0; sleep 2; done; exit 1'
+          env:
+            - name: DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "calendar.secret" $ }}
+                  key: database-dsn
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 64Mi}
+      containers:
+        - name: {{ $component }}
+          image: {{ printf "%s:%s" $image.repository $image.tag | quote }}
+          imagePullPolicy: {{ $image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ $.Release.Name }}-config
+          env:
+            - name: CALENDAR_DATABASE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "calendar.secret" $ }}
+                  key: database-dsn
+            - name: CALENDAR_RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "calendar.secret" $ }}
+                  key: rabbitmq-url
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+          {{- if eq $component "api" }}
+          ports:
+            - {name: http, containerPort: {{ $.Values.service.httpPort }}}
+            - {name: grpc, containerPort: {{ $.Values.service.grpcPort }}}
+          startupProbe:
+            httpGet: {path: /hello, port: http}
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            httpGet: {path: /hello, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /hello, port: http}
+            periodSeconds: 10
+          {{- end }}
+{{- end }}
